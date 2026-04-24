@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import csv
 import math
 import sys
 import traceback
-from dataclasses import dataclass, field
 from itertools import cycle
 from pathlib import Path
 
@@ -14,6 +12,12 @@ from tkinter import filedialog, messagebox, ttk
 import matplotlib
 import numpy as np
 
+from app_constants import APP_TITLE, MAX_FILES
+from data_manager import DataManager
+from exporters import export_comparison_csv
+from fit_engine import FitEngine
+from models import DataFile, FitResult
+
 matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
@@ -22,121 +26,6 @@ try:
     from matplotlib.figure import Figure
 except Exception as exc:  # pragma: no cover
     raise RuntimeError("缺少 matplotlib，请先安装：pip install matplotlib") from exc
-
-try:
-    from scipy.optimize import curve_fit
-except Exception as exc:  # pragma: no cover
-    raise RuntimeError("缺少 scipy，请先安装：pip install scipy") from exc
-
-
-APP_TITLE = "粒度分析分峰软件"
-MAX_FILES = 6
-FIXED_FOUR_PEAKS = np.array([-1.04, 0.15, 1.05, 1.90], dtype=float)
-PEAK_MEANINGS = [
-    (-1.04, "单管/极细管束相，主导高斯特征"),
-    (0.15, "小尺寸亚微米软团聚"),
-    (1.05, "中等尺寸管束网络，处于半分散状态的架凝结构"),
-    (1.90, "大尺寸微米级硬团聚，主导洛伦兹地尾特征"),
-]
-
-
-@dataclass
-class FitResult:
-    model_name: str
-    x_fit: np.ndarray
-    y_fit: np.ndarray
-    components: list[np.ndarray]
-    params: np.ndarray
-    peak_table: list[dict[str, float | str]]
-    r_squared: float
-    rmse: float
-
-
-@dataclass
-class DataFile:
-    path: Path
-    raw_x: np.ndarray
-    raw_y: np.ndarray
-    color: str
-    marker: str
-    visible: bool = True
-    fit_result: FitResult | None = None
-    id: int = field(default=0)
-
-    @property
-    def name(self) -> str:
-        return self.path.name
-
-
-def gaussian(x: np.ndarray, amplitude: float, center: float, sigma: float) -> np.ndarray:
-    sigma = max(abs(float(sigma)), 1e-9)
-    return amplitude * np.exp(-0.5 * ((x - center) / sigma) ** 2)
-
-
-def pseudo_voigt(x: np.ndarray, amplitude: float, center: float, width: float, eta: float) -> np.ndarray:
-    width = max(abs(float(width)), 1e-9)
-    eta = min(max(float(eta), 0.0), 1.0)
-    gaussian_part = np.exp(-4.0 * math.log(2.0) * ((x - center) / width) ** 2)
-    lorentz_part = 1.0 / (1.0 + 4.0 * ((x - center) / width) ** 2)
-    return amplitude * (eta * lorentz_part + (1.0 - eta) * gaussian_part)
-
-
-def skew_normal_peak(x: np.ndarray, amplitude: float, center: float, sigma: float, alpha: float) -> np.ndarray:
-    sigma = max(abs(float(sigma)), 1e-9)
-    z = (x - center) / sigma
-    normal = np.exp(-0.5 * z**2)
-    erf_values = np.array([math.erf(value) for value in alpha * z / math.sqrt(2.0)], dtype=float)
-    cdf = 0.5 * (1.0 + erf_values)
-    return amplitude * 2.0 * normal * cdf
-
-
-def find_peak_indices(y: np.ndarray, prominence: float, distance: int) -> tuple[np.ndarray, np.ndarray]:
-    if len(y) < 3:
-        return np.array([], dtype=int), np.array([], dtype=float)
-    candidates: list[tuple[int, float]] = []
-    for index in range(1, len(y) - 1):
-        if y[index] <= y[index - 1] or y[index] <= y[index + 1]:
-            continue
-        left_min = float(np.min(y[: index + 1]))
-        right_min = float(np.min(y[index:]))
-        score = float(y[index] - max(left_min, right_min))
-        if score >= prominence:
-            candidates.append((index, score))
-    selected: list[tuple[int, float]] = []
-    for index, score in sorted(candidates, key=lambda item: item[1], reverse=True):
-        if all(abs(index - existing_index) >= distance for existing_index, _ in selected):
-            selected.append((index, score))
-    selected.sort(key=lambda item: item[0])
-    return (
-        np.array([index for index, _score in selected], dtype=int),
-        np.array([score for _index, score in selected], dtype=float),
-    )
-
-
-def gaussian_mixture(x: np.ndarray, *params: float) -> np.ndarray:
-    y = np.zeros_like(x, dtype=float)
-    for index in range(0, len(params), 3):
-        y += gaussian(x, params[index], params[index + 1], params[index + 2])
-    return y
-
-
-def pseudo_voigt_mixture(x: np.ndarray, *params: float) -> np.ndarray:
-    y = np.zeros_like(x, dtype=float)
-    for index in range(0, len(params), 4):
-        y += pseudo_voigt(x, params[index], params[index + 1], params[index + 2], params[index + 3])
-    return y
-
-
-def skew_normal_mixture(x: np.ndarray, *params: float) -> np.ndarray:
-    y = np.zeros_like(x, dtype=float)
-    for index in range(0, len(params), 4):
-        y += skew_normal_peak(x, params[index], params[index + 1], params[index + 2], params[index + 3])
-    return y
-
-
-def peak_meaning(center: float) -> str:
-    reference, meaning = min(PEAK_MEANINGS, key=lambda item: abs(center - item[0]))
-    return meaning if abs(center - reference) <= 0.45 else ""
 
 
 class GrainPeakApp(tk.Tk):
@@ -156,6 +45,7 @@ class GrainPeakApp(tk.Tk):
         self.peak_count = tk.IntVar(value=4)
         self.use_fixed_four = tk.BooleanVar(value=False)
         self.show_peak_labels = tk.BooleanVar(value=True)
+        self.fit_progress = tk.DoubleVar(value=0.0)
         self.status_text = tk.StringVar(value="请选择数据文件。")
 
         self._build_ui()
@@ -226,6 +116,8 @@ class GrainPeakApp(tk.Tk):
         ttk.Button(fit_box, text="拟合选中文件", command=self.fit_selected_file).pack(fill=tk.X, pady=(10, 0))
         ttk.Button(fit_box, text="拟合所有可见文件", command=self.fit_visible_files).pack(fill=tk.X, pady=(6, 0))
         ttk.Button(fit_box, text="清除选中文件拟合", command=self.clear_selected_fit).pack(fill=tk.X, pady=(6, 0))
+        self.progress_bar = ttk.Progressbar(fit_box, variable=self.fit_progress, maximum=100)
+        self.progress_bar.pack(fill=tk.X, pady=(8, 0))
 
         help_box = ttk.LabelFrame(parent, text="说明", padding=8)
         help_box.pack(fill=tk.BOTH, expand=True)
@@ -251,7 +143,7 @@ class GrainPeakApp(tk.Tk):
     def _build_table(self, parent: ttk.Frame) -> None:
         table_box = ttk.LabelFrame(parent, text="峰参数（当前选中文件）", padding=4)
         table_box.pack(fill=tk.X, pady=(8, 0))
-        columns = ("file", "index", "center", "height", "width", "area", "extra", "meaning")
+        columns = ("file", "index", "center", "height", "width", "area", "area_ratio", "extra", "meaning")
         self.table = ttk.Treeview(table_box, columns=columns, show="headings", height=7)
         headings = {
             "file": "文件",
@@ -260,17 +152,28 @@ class GrainPeakApp(tk.Tk):
             "height": "峰高",
             "width": "峰宽",
             "area": "面积",
+            "area_ratio": "面积比例(%)",
             "extra": "模型参数",
             "meaning": "物理意义",
         }
-        widths = {"file": 150, "index": 45, "center": 95, "height": 95, "width": 95, "area": 95, "extra": 95, "meaning": 360}
+        widths = {
+            "file": 140,
+            "index": 45,
+            "center": 85,
+            "height": 85,
+            "width": 85,
+            "area": 85,
+            "area_ratio": 100,
+            "extra": 85,
+            "meaning": 320,
+        }
         for column in columns:
             self.table.heading(column, text=headings[column])
             self.table.column(column, width=widths[column], anchor=tk.CENTER)
         self.table.pack(fill=tk.X)
 
     def _try_load_default_files(self) -> None:
-        defaults = [Path("粒度分析1.txt"), Path("粒度分析2.txt")]
+        defaults = [Path("data/examples/粒度分析1.txt"), Path("data/examples/粒度分析2.txt")]
         existing = [path for path in defaults if path.exists()]
         for path in existing[:MAX_FILES]:
             self.load_file(path, show_errors=False)
@@ -316,30 +219,7 @@ class GrainPeakApp(tk.Tk):
 
     @staticmethod
     def _read_two_column_data(path: Path) -> np.ndarray:
-        rows: list[list[float]] = []
-        for encoding in ("utf-8-sig", "utf-8", "gbk"):
-            try:
-                text = path.read_text(encoding=encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-        else:
-            text = path.read_text(errors="ignore")
-        for line in text.splitlines():
-            clean = line.strip()
-            if not clean or clean.startswith("#"):
-                continue
-            parts = clean.replace(",", " ").replace(";", " ").split()
-            if len(parts) < 2:
-                continue
-            try:
-                rows.append([float(parts[0]), float(parts[1])])
-            except ValueError:
-                continue
-        if len(rows) < 4:
-            raise ValueError("文件中有效数据少于 4 行。")
-        data = np.array(rows, dtype=float)
-        return data[np.argsort(data[:, 0])]
+        return DataManager.read_two_column_data(path)
 
     def _refresh_file_list(self) -> None:
         selection = self.file_list.curselection()
@@ -378,21 +258,7 @@ class GrainPeakApp(tk.Tk):
         self.redraw()
 
     def transformed_data(self, item: DataFile) -> tuple[np.ndarray, np.ndarray]:
-        x = item.raw_x.astype(float)
-        y = item.raw_y.astype(float)
-        mode = self.axis_mode.get()
-        if mode == "linear":
-            return x, y
-        mask = x > 0
-        x = x[mask]
-        y = y[mask]
-        if len(x) == 0:
-            raise ValueError(f"{item.name}: Log/Ln 模式要求第一列数据大于 0。")
-        if mode == "log10":
-            return np.log10(x), y
-        if mode == "ln":
-            return np.log(x), y
-        return x, y
+        return DataManager.transform(item, self.axis_mode.get())
 
     def redraw(self) -> None:
         self.ax.clear()
@@ -456,7 +322,10 @@ class GrainPeakApp(tk.Tk):
         if item is None:
             messagebox.showwarning("无法拟合", "请先加载数据文件。")
             return
+        self.fit_progress.set(0.0)
+        self.update_idletasks()
         self._fit_file(item)
+        self.fit_progress.set(100.0)
         self._refresh_file_list()
         self._refresh_table()
         self.redraw()
@@ -467,11 +336,20 @@ class GrainPeakApp(tk.Tk):
             messagebox.showwarning("无法拟合", "没有可见文件。")
             return
         failures: list[str] = []
-        for item in visible_files:
+        self.fit_progress.set(0.0)
+        self.update_idletasks()
+        total_files = len(visible_files)
+        for index, item in enumerate(visible_files, start=1):
             try:
+                self.status_text.set(f"正在拟合 {index}/{total_files}：{item.name}")
+                self.fit_progress.set((index - 1) / total_files * 100)
+                self.update_idletasks()
                 self._fit_file(item, show_message=False)
             except Exception as exc:
                 failures.append(f"{item.name}: {exc}")
+            finally:
+                self.fit_progress.set(index / total_files * 100)
+                self.update_idletasks()
         self._refresh_file_list()
         self._refresh_table()
         self.redraw()
@@ -485,7 +363,10 @@ class GrainPeakApp(tk.Tk):
             x, y = self.transformed_data(item)
             if len(x) < 8:
                 raise ValueError("数据点过少，无法拟合。")
-            item.fit_result = self._fit(x, y)
+            if self.use_fixed_four.get():
+                self.peak_count.set(4)
+            peak_count = max(1, int(self.peak_count.get()))
+            item.fit_result = FitEngine.fit(x, y, self.model_name.get(), peak_count, self.use_fixed_four.get())
             self.status_text.set(
                 f"{item.name} 拟合完成：{item.fit_result.model_name}，R²={item.fit_result.r_squared:.5f}，RMSE={item.fit_result.rmse:.5g}。"
             )
@@ -495,136 +376,6 @@ class GrainPeakApp(tk.Tk):
                 messagebox.showerror("拟合失败", f"{item.name}: {exc}")
             else:
                 raise
-
-    def _fit(self, x: np.ndarray, y: np.ndarray) -> FitResult:
-        model_key = self.model_name.get()
-        peak_count = max(1, int(self.peak_count.get()))
-        centers = self._initial_centers(x, y, peak_count)
-        span = max(float(np.ptp(x)), 1e-6)
-        default_width = span / max(len(centers) * 5.0, 8.0)
-        baseline = max(float(np.nanmin(y)), 0.0)
-        y_work = np.maximum(y - baseline, 0)
-        max_y = max(float(np.nanmax(y_work)), 1e-6)
-
-        if model_key == "gaussian":
-            func = gaussian_mixture
-            model_display = "标准高斯混合"
-            param_width = 3
-            p0, lower, upper = self._initial_bounds(x, y_work, centers, default_width, max_y, span)
-            component_builder = self._gaussian_components
-        elif model_key == "skew_normal":
-            func = skew_normal_mixture
-            model_display = "偏斜高斯混合"
-            param_width = 4
-            p0, lower, upper = self._initial_bounds(x, y_work, centers, default_width, max_y, span, (0.0, -20.0, 20.0))
-            component_builder = self._skew_components
-        else:
-            func = pseudo_voigt_mixture
-            model_display = "伪沃伊特函数"
-            param_width = 4
-            p0, lower, upper = self._initial_bounds(x, y_work, centers, default_width, max_y, span, (0.5, 0.0, 1.0))
-            component_builder = self._pseudo_voigt_components
-
-        params, _ = curve_fit(
-            func,
-            x,
-            y_work,
-            p0=np.array(p0, dtype=float),
-            bounds=(np.array(lower, dtype=float), np.array(upper, dtype=float)),
-            maxfev=50000,
-        )
-        x_fit = np.linspace(float(np.min(x)), float(np.max(x)), 1000)
-        y_fit = func(x_fit, *params) + baseline
-        components = component_builder(x_fit, params)
-        y_pred = func(x, *params) + baseline
-        residual = y - y_pred
-        ss_res = float(np.sum(residual**2))
-        ss_tot = float(np.sum((y - np.mean(y)) ** 2))
-        r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 1.0
-        rmse = math.sqrt(ss_res / len(y))
-        peak_table = self._build_peak_table(x_fit, components, params, param_width)
-        return FitResult(model_display, x_fit, y_fit, components, params, peak_table, r_squared, rmse)
-
-    @staticmethod
-    def _initial_bounds(
-        x: np.ndarray,
-        y_work: np.ndarray,
-        centers: np.ndarray,
-        default_width: float,
-        max_y: float,
-        span: float,
-        extra_bounds: tuple[float, float, float] | None = None,
-    ) -> tuple[list[float], list[float], list[float]]:
-        p0: list[float] = []
-        lower: list[float] = []
-        upper: list[float] = []
-        for center in centers:
-            amplitude = max(float(np.interp(center, x, y_work)), max_y / len(centers))
-            p0.extend([amplitude, float(center), default_width])
-            lower.extend([0.0, float(np.min(x)), span / 10000.0])
-            upper.extend([max_y * 5.0, float(np.max(x)), span])
-            if extra_bounds is not None:
-                initial, low, high = extra_bounds
-                p0.append(initial)
-                lower.append(low)
-                upper.append(high)
-        return p0, lower, upper
-
-    def _initial_centers(self, x: np.ndarray, y: np.ndarray, peak_count: int) -> np.ndarray:
-        if self.use_fixed_four.get():
-            self.peak_count.set(4)
-            return np.clip(FIXED_FOUR_PEAKS, float(np.min(x)), float(np.max(x)))
-        prominence = max(float(np.ptp(y)) * 0.04, 1e-9)
-        distance = max(1, len(x) // max(peak_count * 3, 1))
-        peaks, prominences = find_peak_indices(y, prominence=prominence, distance=distance)
-        centers = np.array([], dtype=float)
-        if len(peaks):
-            selected = peaks[np.argsort(prominences)[-peak_count:]]
-            centers = np.sort(x[selected])
-        if len(centers) < peak_count:
-            fallback = np.quantile(x, np.linspace(0.15, 0.85, peak_count))
-            centers = np.unique(np.concatenate([centers, fallback]))
-        if len(centers) > peak_count:
-            centers = centers[np.linspace(0, len(centers) - 1, peak_count).round().astype(int)]
-        return np.sort(centers[:peak_count])
-
-    @staticmethod
-    def _gaussian_components(x: np.ndarray, params: np.ndarray) -> list[np.ndarray]:
-        return [gaussian(x, params[i], params[i + 1], params[i + 2]) for i in range(0, len(params), 3)]
-
-    @staticmethod
-    def _pseudo_voigt_components(x: np.ndarray, params: np.ndarray) -> list[np.ndarray]:
-        return [pseudo_voigt(x, params[i], params[i + 1], params[i + 2], params[i + 3]) for i in range(0, len(params), 4)]
-
-    @staticmethod
-    def _skew_components(x: np.ndarray, params: np.ndarray) -> list[np.ndarray]:
-        return [skew_normal_peak(x, params[i], params[i + 1], params[i + 2], params[i + 3]) for i in range(0, len(params), 4)]
-
-    @staticmethod
-    def _build_peak_table(
-        x_fit: np.ndarray,
-        components: list[np.ndarray],
-        params: np.ndarray,
-        param_width: int,
-    ) -> list[dict[str, float | str]]:
-        table: list[dict[str, float | str]] = []
-        for index, component in enumerate(components):
-            peak_index = int(np.argmax(component))
-            group = params[index * param_width : (index + 1) * param_width]
-            center = float(x_fit[peak_index])
-            extra = group[3] if len(group) > 3 else float("nan")
-            table.append(
-                {
-                    "index": float(index + 1),
-                    "center": center,
-                    "height": float(component[peak_index]),
-                    "width": float(abs(group[2])),
-                    "area": float(np.trapezoid(component, x_fit)),
-                    "extra": float(extra),
-                    "meaning": peak_meaning(center),
-                }
-            )
-        return table
 
     def _refresh_table(self) -> None:
         for row_id in self.table.get_children():
@@ -644,6 +395,7 @@ class GrainPeakApp(tk.Tk):
                     f"{float(row['height']):.8g}",
                     f"{float(row['width']):.8g}",
                     f"{float(row['area']):.8g}",
+                    f"{float(row['area_ratio']):.2f}",
                     extra,
                     str(row["meaning"]),
                 ),
@@ -672,52 +424,7 @@ class GrainPeakApp(tk.Tk):
         if not filename:
             return
         path = Path(filename)
-        with path.open("w", newline="", encoding="utf-8-sig") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(["axis_mode", self.axis_mode.get()])
-            writer.writerow(["file_count", len(self.files)])
-            writer.writerow([])
-            writer.writerow(["RAW_DATA"])
-            writer.writerow(["file", "visible", "x_raw", "y_raw"])
-            for item in self.files:
-                for x_value, y_value in zip(item.raw_x, item.raw_y, strict=False):
-                    writer.writerow([item.name, item.visible, x_value, y_value])
-            writer.writerow([])
-            writer.writerow(["FIT_SUMMARY"])
-            writer.writerow(["file", "model", "r_squared", "rmse"])
-            for item in self.files:
-                if item.fit_result:
-                    writer.writerow([item.name, item.fit_result.model_name, item.fit_result.r_squared, item.fit_result.rmse])
-            writer.writerow([])
-            writer.writerow(["PEAK_PARAMS"])
-            writer.writerow(["file", "peak", "center", "height", "width", "area", "extra", "meaning"])
-            for item in self.files:
-                if not item.fit_result:
-                    continue
-                for row in item.fit_result.peak_table:
-                    writer.writerow(
-                        [
-                            item.name,
-                            int(float(row["index"])),
-                            row["center"],
-                            row["height"],
-                            row["width"],
-                            row["area"],
-                            row["extra"],
-                            row["meaning"],
-                        ]
-                    )
-            writer.writerow([])
-            writer.writerow(["FIT_CURVES"])
-            writer.writerow(["file", "x_fit", "y_fit", "component_index", "component_y"])
-            for item in self.files:
-                if not item.fit_result:
-                    continue
-                fit = item.fit_result
-                for point_index, x_value in enumerate(fit.x_fit):
-                    writer.writerow([item.name, x_value, fit.y_fit[point_index], "total", ""])
-                    for component_index, component in enumerate(fit.components, start=1):
-                        writer.writerow([item.name, x_value, "", component_index, component[point_index]])
+        export_comparison_csv(path, self.files, self.axis_mode.get())
         self.status_text.set(f"已导出：{path}")
 
 
@@ -731,9 +438,3 @@ def install_exception_hook() -> None:
             pass
 
     sys.excepthook = show_exception
-
-
-if __name__ == "__main__":
-    install_exception_hook()
-    app = GrainPeakApp()
-    app.mainloop()
