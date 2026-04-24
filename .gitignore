@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+
+.venv/
+.venv-pack/
+venv/
+
+build/
+dist/
+tools/
+
+debug_stdout.txt
+debug_stderr.txt
+startup.log
+
+*.log
