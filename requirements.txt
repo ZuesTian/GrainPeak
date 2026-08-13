@@ -1,3 +1,5 @@
 numpy
 scipy
 matplotlib
+flask>=3.1,<4
+gunicorn>=23,<24
