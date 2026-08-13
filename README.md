@@ -56,6 +56,14 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### 浏览器工作台
+
+```bash
+python webapp.py
+```
+
+浏览器访问 `http://127.0.0.1:8770`。Web 版复用与桌面版相同的 SciPy 拟合引擎，提供数据上传、三种坐标模式、三种峰形模型、拟合曲线、R²/RMSE、峰参数与 CSV 导出。上传数据只用于当前请求，不在服务端落盘。
+
 启动后，程序会尝试自动加载当前目录下的 `粒度分析1.txt` 和 `粒度分析2.txt` 作为示例数据。
 
 ## 数据格式
