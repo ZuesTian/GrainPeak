@@ -3,19 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#171b26" />
+    <meta name="theme-color" content="#f4f7f5" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="description" content="GrainPeak 在线粒度分布多峰拟合工作台" />
-    <title>GrainPeak · 在线粒度分峰</title>
-    <script src="theme.js?v=20260813"></script>
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="theme.css?v=20260813" />
+    <meta name="description" content="GrainPeak 多文件粒度分布拟合、对比和导出工作台" />
+    <title>GrainPeak · 粒度分峰工作台</title>
+    <script src="theme.js?v=20260814"></script>
+    <link rel="stylesheet" href="styles.css?v=20260814" />
+    <link rel="stylesheet" href="theme.css?v=20260814" />
   </head>
   <body>
     <header class="topbar">
       <a class="brand" href="https://zuestian.github.io/Cnanotools/">← CNT LAB</a>
-      <span class="topbar-title">GRAIN DISTRIBUTION DECONVOLUTION</span>
+      <span class="topbar-title">GRAIN DISTRIBUTION / MULTI-FILE DECONVOLUTION</span>
       <div class="topbar-actions">
+        <span class="service-state"><i></i> ONLINE</span>
         <button class="theme-toggle" type="button" data-theme-toggle><span data-theme-icon aria-hidden="true">☾</span><span data-theme-label>深色</span></button>
         <a class="source-link" href="https://github.com/ZuesTian/GrainPeak" target="_blank" rel="noreferrer">SOURCE ↗</a>
       </div>
@@ -23,43 +24,55 @@
 
     <main>
       <section class="intro">
-        <p class="eyebrow">SCIENTIFIC FITTING WORKBENCH / 05</p>
-        <h1>把粒度分布拆成<br /><em>可解释的峰。</em></h1>
-        <p>上传两列粒径—强度数据，选择坐标变换与峰形模型，在线完成多峰拟合、质量评估和参数导出。</p>
+        <div><p class="eyebrow">SCIENTIFIC FITTING WORKBENCH / 05</p><h1>多份分布，<em>同图拆峰。</em></h1></div>
+        <p>与桌面版一致地管理 2–6 份粒度数据，独立拟合可见文件，并在同一坐标系比较原始曲线、总拟合、分峰及物理意义。</p>
       </section>
 
       <section class="workspace">
         <aside class="controls panel">
-          <div class="panel-title"><span>01</span><h2>数据与模型</h2></div>
+          <div class="panel-title"><span>01</span><div><h2>数据队列</h2><small id="fileCount">0 / 6 FILES</small></div></div>
           <label class="dropzone" id="dropzone">
-            <input id="fileInput" type="file" accept=".txt,.csv,.dat,text/plain,text/csv" />
-            <b id="fileLabel">选择或拖入数据文件</b>
-            <small>TXT / CSV / DAT · 两列数值 · 最大 2 MB</small>
+            <input id="fileInput" type="file" multiple accept=".txt,.csv,.dat,text/plain,text/csv" />
+            <i aria-hidden="true">＋</i><b>添加粒度数据</b><small>TXT / CSV / DAT · 两列数值 · 单文件 2 MB</small>
           </label>
-          <button class="quiet-button" id="sampleButton" type="button">加载内置示例</button>
+          <button class="quiet-button" id="sampleButton" type="button">载入两份桌面版示例</button>
 
+          <div class="file-list" id="fileList" aria-label="数据文件列表"><p class="list-empty">尚未添加数据文件</p></div>
+
+          <div class="section-label"><span>拟合设置</span><i></i></div>
           <div class="field-grid">
             <label>横坐标模式<select id="axisMode"><option value="linear">正常坐标</option><option value="log10">Log10</option><option value="ln">Ln</option></select></label>
-            <label>峰数量<input id="peakCount" type="number" min="1" max="8" value="4" /></label>
+            <label>峰数量<input id="peakCount" type="number" min="1" max="12" value="4" /></label>
           </div>
           <label>拟合模型<select id="model"><option value="pseudo_voigt">伪沃伊特函数</option><option value="skew_normal">偏斜高斯混合</option><option value="gaussian">标准高斯混合</option></select></label>
-          <label class="check"><input id="fixedFour" type="checkbox" /> 使用 CNT 四峰固定初值</label>
-          <button class="primary-button" id="fitButton" type="button" disabled><span>开始拟合</span><b>→</b></button>
-          <p class="privacy">数据仅随本次拟合请求发送到分析服务，不写入数据库。</p>
+          <div class="check-row"><label><input id="fixedFour" type="checkbox" /> CNT 四峰固定初值</label><label><input id="showLabels" type="checkbox" checked /> 峰意义标注</label></div>
+
+          <div class="action-grid">
+            <button class="primary-button" id="fitActiveButton" type="button" disabled><span>拟合选中</span><b>→</b></button>
+            <button class="secondary-button" id="fitVisibleButton" type="button" disabled>拟合全部可见</button>
+            <button class="secondary-button" id="clearFitButton" type="button" disabled>清除选中拟合</button>
+          </div>
+          <div class="progress-line" id="progressLine" hidden><span id="progressText">准备计算</span><progress id="batchProgress"></progress></div>
+          <p class="privacy">每个文件独立拟合；服务端限制批量总点数并缓存重复结果，数据不写入数据库。</p>
+          <div class="message" id="message" hidden role="status"></div>
         </aside>
 
         <section class="results panel">
-          <div class="panel-title result-title"><div><span>02</span><h2>拟合结果</h2></div><button id="exportButton" type="button" disabled>导出 CSV</button></div>
-          <div class="empty-state" id="emptyState"><i></i><p>加载数据并运行拟合后，曲线与峰参数会显示在这里。</p></div>
-          <div class="result-content" id="resultContent" hidden>
-            <div class="metrics"><article><small>R²</small><strong id="rSquared">—</strong></article><article><small>RMSE</small><strong id="rmse">—</strong></article><article><small>数据点</small><strong id="pointCount">—</strong></article><article><small>模型</small><strong id="modelName">—</strong></article></div>
-            <div class="chart-wrap"><svg id="chart" viewBox="0 0 960 440" role="img" aria-label="粒度拟合曲线"></svg><div class="legend"><span class="raw">原始数据</span><span class="total">总拟合</span><span class="parts">分峰</span></div></div>
-            <div class="table-wrap"><table><thead><tr><th>峰</th><th>中心</th><th>峰高</th><th>宽度</th><th>面积占比</th><th>物理意义</th></tr></thead><tbody id="peakRows"></tbody></table></div>
+          <div class="result-head">
+            <div class="panel-title"><span>02</span><div><h2>对比与参数</h2><small id="activeFileLabel">NO ACTIVE FILE</small></div></div>
+            <button id="exportButton" type="button" disabled>导出完整对比 CSV</button>
           </div>
-          <div class="message" id="message" hidden></div>
+
+          <div class="empty-state" id="emptyState"><i></i><h3>等待粒度数据</h3><p>添加文件后即可预览；拟合选中文件或全部可见文件后显示分峰参数。</p></div>
+          <div class="result-content" id="resultContent" hidden>
+            <div class="metrics"><article><small>R² / SELECTED</small><strong id="rSquared">—</strong></article><article><small>RMSE</small><strong id="rmse">—</strong></article><article><small>DATA POINTS</small><strong id="pointCount">—</strong></article><article><small>MODEL</small><strong id="modelName">RAW PREVIEW</strong></article></div>
+            <div class="chart-wrap"><svg id="chart" viewBox="0 0 1100 500" role="img" aria-label="多文件粒度拟合对比曲线"></svg><div class="chart-footer"><span id="axisLabel">粒径 / 坐标</span><div class="legend" id="chartLegend"></div></div></div>
+            <div class="table-head"><div><h3>选中文件峰参数</h3><span id="tableHint">拟合后显示</span></div><span>面积占比总和应接近 100%</span></div>
+            <div class="table-wrap"><table><thead><tr><th>峰</th><th>中心</th><th>峰高</th><th>宽度</th><th>面积</th><th>面积占比</th><th>模型参数</th><th>物理意义</th></tr></thead><tbody id="peakRows"><tr><td colspan="8">尚无拟合参数</td></tr></tbody></table></div>
+          </div>
         </section>
       </section>
     </main>
-    <script src="app.js" defer></script>
+    <script src="app.js?v=20260814" defer></script>
   </body>
 </html>

@@ -28,12 +28,44 @@ class GrainPeakWebTests(unittest.TestCase):
         self.assertEqual(y.tolist(), [10.0, 20.0, 30.0, 40.0])
 
     def test_fit_returns_metrics_and_peaks(self):
-        response = self.client.post("/api/fit", json={"text": SAMPLE_TEXT, "model": "gaussian", "peak_count": 1, "axis_mode": "linear"})
+        response = self.client.post("/api/fit", json={"client_id": "one", "text": SAMPLE_TEXT, "model": "gaussian", "peak_count": 1, "axis_mode": "linear"})
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         body = response.get_json()
         self.assertEqual(body["point_count"], 5)
         self.assertEqual(len(body["peaks"]), 1)
+        self.assertEqual(body["client_id"], "one")
         self.assertIn("r_squared", body)
+
+    def test_samples_returns_desktop_examples(self):
+        response = self.client.get("/api/samples")
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(len(response.get_json()["files"]), 2)
+
+    def test_batch_fit_keeps_per_file_identity(self):
+        response = self.client.post(
+            "/api/batch-fit",
+            json={
+                "model": "gaussian",
+                "peak_count": 1,
+                "axis_mode": "linear",
+                "files": [
+                    {"client_id": "a", "filename": "a.csv", "text": SAMPLE_TEXT},
+                    {"client_id": "b", "filename": "b.csv", "text": SAMPLE_TEXT},
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        body = response.get_json()
+        self.assertEqual(body["succeeded"], 2)
+        self.assertEqual({item["client_id"] for item in body["results"]}, {"a", "b"})
+
+    def test_desktop_peak_limit_is_supported(self):
+        response = self.client.post(
+            "/api/fit",
+            json={"text": SAMPLE_TEXT, "model": "gaussian", "peak_count": 13, "axis_mode": "linear"},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("1–12", response.get_json()["error"])
 
     def test_invalid_data_is_rejected(self):
         response = self.client.post("/api/fit", json={"text": "x,y\n1,2"})
