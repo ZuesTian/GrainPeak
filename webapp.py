@@ -19,7 +19,7 @@ if str(SRC) not in sys.path:
 from fit_engine import FitEngine  # noqa: E402
 
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 MAX_REQUEST_BYTES = 14 * 1024 * 1024
 MAX_POINTS = 20_000

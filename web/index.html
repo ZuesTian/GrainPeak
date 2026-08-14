@@ -9,6 +9,7 @@
     <title>GrainPeak · 粒度分峰工作台</title>
     <script src="theme.js?v=20260814"></script>
     <link rel="stylesheet" href="styles.css?v=20260814" />
+    <link rel="stylesheet" href="paste.css?v=20260814-paste" />
     <link rel="stylesheet" href="theme.css?v=20260814" />
   </head>
   <body>
@@ -36,6 +37,15 @@
             <i aria-hidden="true">＋</i><b>添加粒度数据</b><small>TXT / CSV / DAT · 两列数值 · 单文件 2 MB</small>
           </label>
           <button class="quiet-button" id="sampleButton" type="button">载入两份桌面版示例</button>
+          <details class="paste-input" id="pastePanel">
+            <summary><span>粘贴表格数据</span><small>Excel / Origin · Ctrl+V</small></summary>
+            <div class="paste-input-body">
+              <input id="pasteName" type="text" maxlength="80" placeholder="样品名称（可选）" aria-label="粘贴数据名称" />
+              <textarea id="pasteText" rows="7" spellcheck="false" aria-label="粘贴粒度数据" placeholder="粘贴两列数值数据，例如：&#10;粒径&#9;频率&#10;10&#9;0.12&#10;20&#9;0.35"></textarea>
+              <p id="pasteStatus" class="paste-status" aria-live="polite">支持制表符、逗号、分号和空格分隔。</p>
+              <div class="paste-actions"><button id="readClipboardButton" type="button">读取剪贴板</button><button id="addPastedButton" class="accent" type="button" disabled>加入队列</button></div>
+            </div>
+          </details>
 
           <div class="file-list" id="fileList" aria-label="数据文件列表"><p class="list-empty">尚未添加数据文件</p></div>
 
@@ -73,6 +83,6 @@
         </section>
       </section>
     </main>
-    <script src="app.js?v=20260814" defer></script>
+    <script src="app.js?v=20260814-paste" defer></script>
   </body>
 </html>

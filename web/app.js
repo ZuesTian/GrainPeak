@@ -102,12 +102,85 @@ function statusFor(doc) {
   return doc.fitSignature === optionsSignature() ? "已拟合" : "参数已变";
 }
 
-function addDocument(filename, text) {
+function addDocument(filename, text, parsedRaw = null) {
   if (state.docs.length >= MAX_FILES) throw new Error(`最多同时管理 ${MAX_FILES} 个文件。`);
-  const raw = parseText(text);
+  const raw = parsedRaw || parseText(text);
   const doc = { id: uid(), name: filename, text, raw, visible: true, result: null, fitSignature: "", error: "", color: palette[state.docs.length % palette.length] };
   state.docs.push(doc);
   state.activeId = doc.id;
+}
+
+function pastedFilename(defaultStem, extension) {
+  const requested = $("#pasteName").value.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+  const stem = requested || `${defaultStem}-${new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14)}`;
+  return /\.[a-z0-9]+$/i.test(stem) ? stem : `${stem}.${extension}`;
+}
+
+const pasteCache = { text: "", data: null, timer: 0 };
+
+function pastedPreview() {
+  const text = $("#pasteText").value.trim();
+  if (!text) throw new Error("请先粘贴两列粒度数据。");
+  if (new Blob([text]).size > MAX_BYTES) throw new Error("粘贴内容超过 2 MB。");
+  if (pasteCache.text !== text || !pasteCache.data) {
+    pasteCache.text = text;
+    pasteCache.data = parseText(text);
+  }
+  return { text, data: pasteCache.data };
+}
+
+function schedulePastePreview() {
+  clearTimeout(pasteCache.timer);
+  pasteCache.text = "";
+  pasteCache.data = null;
+  $("#addPastedButton").disabled = true;
+  pasteCache.timer = setTimeout(updatePastePreview, 140);
+}
+
+function updatePastePreview() {
+  const status = $("#pasteStatus");
+  const button = $("#addPastedButton");
+  try {
+    const { data } = pastedPreview();
+    status.textContent = `已识别 ${data.x.length.toLocaleString()} 点 · X ${nice(data.x[0])}–${nice(data.x[data.x.length - 1])}`;
+    status.dataset.state = "ready";
+    button.disabled = state.busy || state.docs.length >= MAX_FILES;
+  } catch (error) {
+    status.textContent = $("#pasteText").value.trim() ? error.message : "支持制表符、逗号、分号和空格分隔。";
+    status.dataset.state = $("#pasteText").value.trim() ? "error" : "";
+    button.disabled = true;
+  }
+}
+
+async function readPastedText() {
+  try {
+    if (!navigator.clipboard?.readText) throw new Error("当前浏览器不允许直接读取剪贴板，请在粘贴框中按 Ctrl+V。");
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) throw new Error("剪贴板中没有文本数据。");
+    $("#pasteText").value = text;
+    updatePastePreview();
+  } catch (error) {
+    setMessage(error.name === "NotAllowedError" ? "浏览器未授权读取剪贴板，请在粘贴框中按 Ctrl+V。" : error.message);
+  }
+}
+
+function addPastedDocument() {
+  if (state.busy) return;
+  try {
+    const { text, data } = pastedPreview();
+    const filename = pastedFilename("粘贴粒度", "csv");
+    addDocument(filename, text, data);
+    $("#pasteText").value = "";
+    $("#pasteName").value = "";
+    $("#pastePanel").open = false;
+    pasteCache.text = "";
+    pasteCache.data = null;
+    renderAll();
+    setMessage(`${filename} 已加入数据队列。`, "success");
+  } catch (error) {
+    setMessage(error.message);
+    updatePastePreview();
+  }
 }
 
 async function readFiles(fileList) {
@@ -132,6 +205,9 @@ fileInput.addEventListener("change", () => readFiles(fileInput.files));
 ["dragenter", "dragover"].forEach((name) => dropzone.addEventListener(name, (event) => { event.preventDefault(); dropzone.classList.add("dragging"); }));
 ["dragleave", "drop"].forEach((name) => dropzone.addEventListener(name, (event) => { event.preventDefault(); dropzone.classList.remove("dragging"); }));
 dropzone.addEventListener("drop", (event) => readFiles(event.dataTransfer.files));
+$("#pasteText").addEventListener("input", schedulePastePreview);
+$("#readClipboardButton").addEventListener("click", readPastedText);
+$("#addPastedButton").addEventListener("click", addPastedDocument);
 
 $("#sampleButton").addEventListener("click", async () => {
   if (state.busy) return;
@@ -384,6 +460,7 @@ function renderAll() {
   renderFileList();
   updateButtons();
   renderResult();
+  updatePastePreview();
 }
 
 renderAll();
