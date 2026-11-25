@@ -106,6 +106,7 @@ function addDocument(filename, text, parsedRaw = null) {
   if (state.docs.length >= MAX_FILES) throw new Error(`最多同时管理 ${MAX_FILES} 个文件。`);
   const raw = parsedRaw || parseText(text);
   const doc = { id: uid(), name: filename, text, raw, visible: true, result: null, fitSignature: "", error: "", color: palette[state.docs.length % palette.length] };
+  document.dispatchEvent(new Event("cnt-data-imported"));
   state.docs.push(doc);
   state.activeId = doc.id;
 }
