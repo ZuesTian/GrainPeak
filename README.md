@@ -2,6 +2,8 @@
 
 GrainPeak 是一款基于 Python Tkinter 的粒度分析分峰软件，用于读取粒度分布数据、进行多峰拟合、对比多个样品曲线，并导出拟合结果。
 
+**[在线工作台](https://grain-peak.47.236.76.214.nip.io/)** · [全部 CNT 工具](https://zuestian.github.io/Cnanotools/)
+
 ## 功能特性
 
 - 支持导入 `.txt`、`.csv`、`.dat` 等两列粒度数据文件
@@ -21,13 +23,16 @@ GrainPeak 是一款基于 Python Tkinter 的粒度分析分峰软件，用于读
 ## 项目结构
 
 ```text
-.
-├── main.py                    # 主程序入口和 GUI 实现
-├── requirements.txt           # Python 依赖
-├── GrainPeakAnalyzerDir.spec  # PyInstaller 目录版打包配置
-├── 粒度分析1.txt              # 示例数据
-├── 粒度分析2.txt              # 示例数据
-└── README.md
+src/main.py                  # 桌面启动入口
+src/app.py                   # GUI 应用
+src/fit_engine.py            # 拟合引擎
+webapp.py                    # Web 启动入口
+web/                         # 浏览器界面
+data/examples/               # 两份粒度示例数据
+scripts/                     # 辅助脚本
+tests/                       # 自动化测试
+requirements.txt             # Python 依赖
+GrainPeakAnalyzerDir.spec     # Windows 打包配置
 ```
 
 ## 环境要求
@@ -53,7 +58,7 @@ pip install -r requirements.txt
 ## 运行
 
 ```bash
-python main.py
+python src/main.py
 ```
 
 ### 浏览器工作台
@@ -64,7 +69,7 @@ python webapp.py
 
 浏览器访问 `http://127.0.0.1:8770`。Web 版复用与桌面版相同的 SciPy 拟合引擎，提供数据上传、三种坐标模式、三种峰形模型、拟合曲线、R²/RMSE、峰参数与 CSV 导出。上传数据只用于当前请求，不在服务端落盘。
 
-启动后，程序会尝试自动加载当前目录下的 `粒度分析1.txt` 和 `粒度分析2.txt` 作为示例数据。
+从仓库根目录启动后，程序会尝试自动加载 `data/examples/` 下的 `粒度分析1.txt` 和 `粒度分析2.txt` 作为示例数据。
 
 ## 数据格式
 
