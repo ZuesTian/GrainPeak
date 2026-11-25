@@ -16,6 +16,7 @@ class FitResult:
     peak_table: list[dict[str, float | str]]
     r_squared: float
     rmse: float
+    baseline: float = 0.0
 
 
 @dataclass

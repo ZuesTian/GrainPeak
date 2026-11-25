@@ -30,9 +30,15 @@ class FitEngine:
         y: np.ndarray,
         peak_count: int,
         use_fixed_four: bool,
+        axis_mode: str = "log10",
     ) -> np.ndarray:
         if use_fixed_four:
-            return np.clip(FIXED_FOUR_PEAKS, float(np.min(x)), float(np.max(x)))
+            centers = {"log10": FIXED_FOUR_PEAKS, "ln": FIXED_FOUR_PEAKS * np.log(10),
+                       "linear": 10 ** FIXED_FOUR_PEAKS}[axis_mode]
+            if centers.min() >= x.min() and centers.max() <= x.max():
+                return centers.copy()
+            # A clipped starting position duplicates peaks at the domain edge.
+            return np.quantile(x, np.linspace(0.15, 0.85, 4))
         prominence = max(float(np.ptp(y)) * 0.04, 1e-9)
         distance = max(1, len(x) // max(peak_count * 3, 1))
         peaks, prominences = find_peak_indices(y, prominence=prominence, distance=distance)
@@ -48,8 +54,8 @@ class FitEngine:
         return np.sort(centers[:peak_count])
 
     @staticmethod
-    def fit(x: np.ndarray, y: np.ndarray, model_key: str, peak_count: int, use_fixed_four: bool) -> FitResult:
-        centers = FitEngine.initial_centers(x, y, peak_count, use_fixed_four)
+    def fit(x: np.ndarray, y: np.ndarray, model_key: str, peak_count: int, use_fixed_four: bool, axis_mode: str = "log10") -> FitResult:
+        centers = FitEngine.initial_centers(x, y, peak_count, use_fixed_four, axis_mode)
         span = max(float(np.ptp(x)), 1e-6)
         default_width = span / max(len(centers) * 5.0, 8.0)
         baseline = max(float(np.nanmin(y)), 0.0)
@@ -93,7 +99,7 @@ class FitEngine:
         r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 1.0
         rmse = math.sqrt(ss_res / len(y))
         peak_table = FitEngine.build_peak_table(x_fit, components, params, param_width)
-        return FitResult(model_display, x_fit, y_fit, components, params, peak_table, r_squared, rmse)
+        return FitResult(model_display, x_fit, y_fit, components, params, peak_table, r_squared, rmse, baseline)
 
     @staticmethod
     def initial_bounds(

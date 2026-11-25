@@ -140,7 +140,7 @@ def fit_item(
             }
 
     x, y = transform_x(raw_x, raw_y, axis_mode)
-    result = FitEngine.fit(x, y, model, peak_count, use_fixed_four)
+    result = FitEngine.fit(x, y, model, peak_count, use_fixed_four, axis_mode)
     peaks = [
         {
             "index": int(float(row["index"])),
@@ -162,6 +162,7 @@ def fit_item(
         "rmse": finite_or_none(result.rmse),
         "raw": compact_curve(x, y),
         "fit": compact_curve(result.x_fit, result.y_fit),
+        "baseline": result.baseline,
         "components": [compact_curve(result.x_fit, component) for component in result.components],
         "peaks": peaks,
     }
@@ -181,7 +182,7 @@ def fit_item(
 def error_response(exc: Exception):
     if isinstance(exc, ApiError):
         return jsonify(error=str(exc)), exc.status
-    if isinstance(exc, (RuntimeError, ValueError)):
+    if isinstance(exc, ValueError) and type(exc) is ValueError and str(exc).startswith(("数据", "有效", "所选", "无法", "至少", "文件")):
         return jsonify(error=str(exc)), 422
     app.logger.exception("GrainPeak fitting failed")
     return jsonify(error="拟合未收敛，请调整峰数量、坐标模式或数据范围后重试。"), 422
@@ -192,9 +193,12 @@ def index():
     return app.send_static_file("index.html")
 
 
+@app.get("/health")
 @app.get("/api/health")
 def health():
-    return jsonify(status="ok", service="grainpeak", version=APP_VERSION)
+    response = jsonify(status="ok", service="grainpeak", version=APP_VERSION)
+    response.headers["Access-Control-Allow-Origin"] = "https://zuestian.github.io"
+    return response
 
 
 @app.get("/api/samples")
@@ -240,16 +244,16 @@ def batch_fit():
     for item in files:
         try:
             parsed = parse_item(item)
-            total_points += len(parsed[2])
-            if total_points > MAX_BATCH_POINTS:
+            if total_points + len(parsed[2]) > MAX_BATCH_POINTS:
                 raise ApiError(f"批量数据总点数不能超过 {MAX_BATCH_POINTS:,}。")
+            total_points += len(parsed[2])
             prepared.append((item, parsed))
         except Exception as exc:
             errors.append(
                 {
                     "client_id": str(item.get("client_id") or ""),
                     "filename": str(item.get("filename") or "未命名数据"),
-                    "error": str(exc),
+                    "error": error_response(exc)[0].get_json()["error"],
                 }
             )
 
@@ -262,7 +266,7 @@ def batch_fit():
                 {
                     "client_id": str(item.get("client_id") or ""),
                     "filename": str(item.get("filename") or "未命名数据"),
-                    "error": str(exc),
+                    "error": error_response(exc)[0].get_json()["error"],
                 }
             )
     return jsonify(
@@ -276,7 +280,7 @@ def batch_fit():
 
 @app.errorhandler(413)
 def too_large(_error):
-    return jsonify(error="请求总大小不能超过 8 MB；单个文件不能超过 2 MB。"), 413
+    return jsonify(error="请求总大小不能超过 14 MB；单个文件不能超过 2 MB。"), 413
 
 
 if __name__ == "__main__":

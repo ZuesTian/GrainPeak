@@ -7,14 +7,14 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content="GrainPeak 多文件粒度分布拟合、对比和导出工作台" />
     <title>GrainPeak · 粒度分峰工作台</title>
-    <script src="theme.js?v=20260814"></script>
-    <link rel="stylesheet" href="styles.css?v=20260814" />
-    <link rel="stylesheet" href="paste.css?v=20260814-paste" />
-    <link rel="stylesheet" href="theme.css?v=20260814" />
+    <script src="theme.js?v=20261125"></script>
+    <link rel="stylesheet" href="styles.css?v=20261125" />
+    <link rel="stylesheet" href="paste.css?v=20261125" />
+    <link rel="stylesheet" href="theme.css?v=20261125" />
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="https://zuestian.github.io/Cnanotools/">← CNT LAB</a>
+      <a class="brand" href="https://zuestian.github.io/Cnanotools/">返回 CNT LAB</a>
       <span class="topbar-title">GRAIN DISTRIBUTION / MULTI-FILE DECONVOLUTION</span>
       <div class="topbar-actions">
         <span class="service-state"><i></i> ONLINE</span>
@@ -55,7 +55,7 @@
             <label>峰数量<input id="peakCount" type="number" min="1" max="12" value="4" /></label>
           </div>
           <label>拟合模型<select id="model"><option value="pseudo_voigt">伪沃伊特函数</option><option value="skew_normal">偏斜高斯混合</option><option value="gaussian">标准高斯混合</option></select></label>
-          <div class="check-row"><label><input id="fixedFour" type="checkbox" /> CNT 四峰固定初值</label><label><input id="showLabels" type="checkbox" checked /> 峰意义标注</label></div>
+          <div class="check-row"><label><input id="fixedFour" type="checkbox" /> CNT 四峰初值（按 log10 粒径换算）</label><label><input id="showLabels" type="checkbox" checked /> 峰意义标注</label></div>
 
           <div class="action-grid">
             <button class="primary-button" id="fitActiveButton" type="button" disabled><span>拟合选中</span><b>→</b></button>
@@ -83,6 +83,6 @@
         </section>
       </section>
     </main>
-    <script src="app.js?v=20260814-paste" defer></script>
+    <script src="app.js?v=20261125" defer></script>
   </body>
 </html>

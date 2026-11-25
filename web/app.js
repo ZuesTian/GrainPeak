@@ -380,7 +380,6 @@ function drawChart() {
     try {
       const currentResult = doc.result && doc.result.axis_mode === $("#axisMode").value ? doc.result : null;
       plotted.push({ doc, raw: currentResult?.raw || transformedPreview(doc), result: currentResult });
-      doc.error = "";
     } catch (error) { doc.error = error.message; }
   }
   if (!plotted.length) {
@@ -412,12 +411,12 @@ function drawChart() {
   for (const { doc, raw, result } of plotted) {
     html += `<path class="chart-raw" style="stroke:${doc.color}" d="${path(raw)}"/>`;
     if (!result) continue;
-    result.components.forEach((curve) => { html += `<path class="chart-part" style="stroke:${doc.color}" d="${path(curve)}"/>`; });
+    result.components.forEach((curve) => { html += `<path class="chart-part" style="stroke:${doc.color}" d="${path({x:curve.x, y:curve.y.map(y => y + result.baseline)})}"/>`; });
     html += `<path class="chart-fit" style="stroke:${doc.color}" d="${path(result.fit)}"/>`;
     if ($("#showLabels").checked) {
       result.peaks.forEach((peak, index) => {
         if (!peak.meaning || !Number.isFinite(peak.center) || !Number.isFinite(peak.height)) return;
-        const x = sx(peak.center), y = sy(peak.height);
+        const x = sx(peak.center), y = sy(peak.height + result.baseline);
         const offset = 18 + index % 3 * 14;
         html += `<line class="peak-link" style="stroke:${doc.color}" x1="${x}" y1="${y}" x2="${x+5}" y2="${Math.max(T+12, y-offset)}"/><text class="peak-label" style="fill:${doc.color}" x="${x+8}" y="${Math.max(T+10, y-offset)}">${escapeHtml(peak.meaning)}</text>`;
       });

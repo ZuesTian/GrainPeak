@@ -2,6 +2,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -16,6 +18,21 @@ class GrainPeakWebTests(unittest.TestCase):
     def setUp(self):
         app.config.update(TESTING=True)
         self.client = app.test_client()
+
+    def test_peak_seeds_and_components_on_each_axis(self):
+        from fit_engine import FitEngine
+        from app_constants import FIXED_FOUR_PEAKS
+        diameters = np.geomspace(0.02, 170, 600)
+        for mode, transform in (("linear", lambda x: x), ("ln", np.log), ("log10", np.log10)):
+            x = transform(diameters)
+            np.testing.assert_allclose(FitEngine.initial_centers(x, np.zeros_like(x), 4, True, mode),
+                                       transform(10 ** FIXED_FOUR_PEAKS), atol=1e-12)
+        x = np.linspace(-2, 2, 301)
+        y = 3 + 6 * np.exp(-(x / .2)**2 / 2)
+        fit = FitEngine.fit(x, y, "gaussian", 1, False)
+        self.assertAlmostEqual(fit.baseline, 3)
+        np.testing.assert_allclose(fit.baseline + np.sum(fit.components, axis=0), fit.y_fit)
+        self.assertGreater(fit.r_squared, .99999)
 
     def test_health(self):
         response = self.client.get("/api/health")

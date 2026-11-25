@@ -8,6 +8,7 @@ from app_constants import PEAK_MEANINGS
 
 try:
     from scipy.signal import find_peaks as scipy_find_peaks
+    from scipy.special import erf
 except Exception as exc:  # pragma: no cover
     raise RuntimeError("缺少 scipy，请先安装：pip install scipy") from exc
 
@@ -29,7 +30,7 @@ def skew_normal_peak(x: np.ndarray, amplitude: float, center: float, sigma: floa
     sigma = max(abs(float(sigma)), 1e-9)
     z = (x - center) / sigma
     normal = np.exp(-0.5 * z**2)
-    erf_values = np.array([math.erf(value) for value in alpha * z / math.sqrt(2.0)], dtype=float)
+    erf_values = erf(alpha * z / math.sqrt(2.0))
     cdf = 0.5 * (1.0 + erf_values)
     return amplitude * 2.0 * normal * cdf
 

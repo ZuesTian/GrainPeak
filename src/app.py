@@ -107,7 +107,7 @@ class GrainPeakApp(tk.Tk):
             ttk.Radiobutton(fit_box, text=text, value=value, variable=self.model_name).pack(anchor=tk.W)
         ttk.Label(fit_box, text="峰数量").pack(anchor=tk.W, pady=(8, 0))
         ttk.Spinbox(fit_box, from_=1, to=12, textvariable=self.peak_count, width=8).pack(anchor=tk.W)
-        ttk.Checkbutton(fit_box, text="四峰固定初值（-1.04, 0.15, 1.05, 1.90）", variable=self.use_fixed_four).pack(
+        ttk.Checkbutton(fit_box, text="四峰固定初值（log10 粒径：-1.04, 0.15, 1.05, 1.90）", variable=self.use_fixed_four).pack(
             anchor=tk.W, pady=(8, 0)
         )
         ttk.Checkbutton(fit_box, text="显示峰物理意义标注", variable=self.show_peak_labels, command=self.redraw).pack(
@@ -281,7 +281,7 @@ class GrainPeakApp(tk.Tk):
                 fit = item.fit_result
                 self.ax.plot(fit.x_fit, fit.y_fit, "-", color=item.color, linewidth=2, label=f"{item.name} 拟合")
                 for index, component in enumerate(fit.components, start=1):
-                    self.ax.plot(fit.x_fit, component, "--", color=item.color, linewidth=1, alpha=0.55)
+                    self.ax.plot(fit.x_fit, component + fit.baseline, "--", color=item.color, linewidth=1, alpha=0.55)
                 if self.show_peak_labels.get():
                     self._draw_peak_labels(item, fit)
         self.ax.set_title("粒度分析多文件对比")
@@ -366,7 +366,7 @@ class GrainPeakApp(tk.Tk):
             if self.use_fixed_four.get():
                 self.peak_count.set(4)
             peak_count = max(1, int(self.peak_count.get()))
-            item.fit_result = FitEngine.fit(x, y, self.model_name.get(), peak_count, self.use_fixed_four.get())
+            item.fit_result = FitEngine.fit(x, y, self.model_name.get(), peak_count, self.use_fixed_four.get(), self.axis_mode.get())
             self.status_text.set(
                 f"{item.name} 拟合完成：{item.fit_result.model_name}，R²={item.fit_result.r_squared:.5f}，RMSE={item.fit_result.rmse:.5g}。"
             )
